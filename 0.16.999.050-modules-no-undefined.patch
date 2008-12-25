@@ -1,0 +1,762 @@
+--- origsrc/enlightenment-0.16.999.050/configure.in	2008-09-24 21:22:10.000000000 -0500
++++ src/enlightenment-0.16.999.050/configure.in	2008-12-25 13:14:23.240500000 -0600
+@@ -77,6 +77,18 @@
+ AC_SUBST(MODULE_ARCH)
+ AC_DEFINE_UNQUOTED(MODULE_ARCH, "$MODULE_ARCH", "Module architecture")
+ 
++case "$host_os" in
++	cygwin*)
++		with_cygwin=yes
++		E_IMPLIB="-lenlightenment"
++		lt_no_undefined="-no-undefined -Wl,\$(top_builddir)/src/bin/libenlightenment.a"
++		;;
++esac
++
++AC_SUBST(E_IMPLIB)
++AC_SUBST(lt_no_undefined)
++AM_CONDITIONAL(CYGWIN, test "x$with_cygwin" = "xyes")
++
+ if test "x${bindir}" = 'xNONE'; then
+   if test "x${prefix}" = "xNONE"; then
+     PACKAGE_BIN_DIR="${ac_default_prefix}/bin"
+@@ -239,7 +251,7 @@
+   fi
+ fi
+ 
+-e_libs=$E_LIBS" "$LIBINTL" "$fnmatch_libs" "$ECORE_IMF_LIBS" "
++e_libs=$E_LIBS" "$LTLIBINTL" "$fnmatch_libs" "$ECORE_IMF_LIBS" "
+ e_cflags="-DUSE_E_CONFIG_H "$define_e_dbus" "$E_CFLAGS" "$E_DBUS_CFLAGS" "$ECORE_IMF_CFLAGS" "
+ e_configflags="-DUSE_E_CONFIG_H "$define_e_dbus" "
+ 
+--- origsrc/enlightenment-0.16.999.050/enlightenment-config.in	2008-08-17 09:52:07.000000000 -0500
++++ src/enlightenment-0.16.999.050/enlightenment-config.in	2008-12-25 15:38:21.599875000 -0600
+@@ -44,7 +44,7 @@
+       ;;
+     --libs)
+       libdirs="-L@libdir@"
+-      echo $libdirs
++      echo $libdirs @E_IMPLIB@
+       ;;
+     --module-dir)
+       dir="@libdir@/@PACKAGE@/modules"
+--- origsrc/enlightenment-0.16.999.050/enlightenment.pc.in	2008-08-17 09:52:07.000000000 -0500
++++ src/enlightenment-0.16.999.050/enlightenment.pc.in	2008-12-25 13:13:28.162375000 -0600
+@@ -7,6 +7,6 @@
+ Description: Enlightenmnt Window Manager
+ Requires: @requirements_e@
+ Version: @VERSION@
+-Libs: -L${libdir}
++Libs: -L${libdir} @E_IMPLIB@
+ Libs.private: 
+ Cflags: -I${includedir} @e_configflags@
+--- origsrc/enlightenment-0.16.999.050/src/bin/Makefile.am	2008-09-24 04:44:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/bin/Makefile.am	2008-12-25 13:15:33.615500000 -0600
+@@ -308,7 +308,12 @@
+ e_main.c \
+ $(enlightenment_src)
+ 
+-enlightenment_LDFLAGS = -export-dynamic @e_libs@ @x_libs@ @dlopen_libs@ @cf_libs@ @VALGRIND_LIBS@ @E_DBUS_LIBS@
++if CYGWIN
++enlightenment_LDFLAGS = -Wl,--export-all-symbols,--out-implib,libenlightenment.a
++else
++enlightenment_LDFLAGS = -export-dynamic
++endif
++enlightenment_LDADD = @e_libs@ @x_libs@ @dlopen_libs@ @cf_libs@ @VALGRIND_LIBS@ @E_DBUS_LIBS@
+ 
+ enlightenment_remote_SOURCES = \
+ e.h \
+@@ -367,6 +372,10 @@
+ setuid_root_mode = a=rx,u+xs
+ install-exec-hook:
+ 	@chmod $(setuid_root_mode) $(DESTDIR)$(bindir)/enlightenment_sys$(EXEEXT) || true
++if CYGWIN
++	$(mkinstalldirs) $(DESTDIR)$(libdir)
++	$(INSTALL_DATA) libenlightenment.a $(DESTDIR)$(libdir)/libenlightenment.a
++endif
+ 
+ installed_headersdir = $(prefix)/include/enlightenment
+ installed_headers_DATA = $(ENLIGHTENMENTHEADERS)
+--- origsrc/enlightenment-0.16.999.050/src/bin/e_module.c	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/bin/e_module.c	2008-12-25 03:14:04.037375000 -0600
+@@ -3,6 +3,12 @@
+  */
+ #include "e.h"
+ 
++#ifdef __CYGWIN__
++#define MODULE_EXT "dll"
++#else
++#define MODULE_EXT "so"
++#endif
++
+ /* TODO List:
+  * 
+  * * add module types/classes
+@@ -114,7 +120,7 @@
+    m = E_OBJECT_ALLOC(E_Module, E_MODULE_TYPE, _e_module_free);
+    if (name[0] != '/')
+      {
+-	snprintf(buf, sizeof(buf), "%s/%s/module.so", name, MODULE_ARCH);
++	snprintf(buf, sizeof(buf), "%s/%s/module.%s", name, MODULE_ARCH, MODULE_EXT);
+ 	modpath = e_path_find(path_modules, buf);
+      }
+    else
+--- origsrc/enlightenment-0.16.999.050/src/modules/battery/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/battery/Makefile.am	2008-12-25 11:11:40.865500000 -0600
+@@ -23,7 +23,7 @@
+                          e_mod_main.h \
+ 			 e_mod_config.c
+ module_la_LIBADD       = @e_libs@ @cf_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ batgetdir = $(pkgdir)
+--- origsrc/enlightenment-0.16.999.050/src/modules/clock/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/clock/Makefile.am	2008-12-25 11:11:40.881125000 -0600
+@@ -21,7 +21,7 @@
+ module_la_SOURCES      = e_mod_main.c \
+                          e_mod_main.h
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf/Makefile.am	2008-12-25 11:11:40.881125000 -0600
+@@ -24,7 +24,7 @@
+                          e_conf.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_applications/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_applications/Makefile.am	2008-12-25 11:11:40.912375000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_apps.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_borders/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_borders/Makefile.am	2008-12-25 11:11:40.912375000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_borders.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_clientlist/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_clientlist/Makefile.am	2008-12-25 11:11:40.928000000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_clientlist.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_colors/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_colors/Makefile.am	2008-12-25 11:11:40.943625000 -0600
+@@ -24,7 +24,7 @@
+ 			 e_int_config_color_classes.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_desk/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_desk/Makefile.am	2008-12-25 11:11:40.959250000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_desk.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_desklock/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_desklock/Makefile.am	2008-12-25 11:11:40.974875000 -0600
+@@ -24,7 +24,7 @@
+ 			 e_int_config_desklock.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_desks/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_desks/Makefile.am	2008-12-25 11:11:40.990500000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_desks.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_dialogs/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_dialogs/Makefile.am	2008-12-25 11:11:40.990500000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_dialogs.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_display/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_display/Makefile.am	2008-12-25 11:11:41.006125000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_display.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_dpms/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_dpms/Makefile.am	2008-12-25 11:11:41.021750000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_dpms.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_engine/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_engine/Makefile.am	2008-12-25 11:11:41.037375000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_engine.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_exebuf/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_exebuf/Makefile.am	2008-12-25 11:11:41.053000000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_exebuf.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_fonts/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_fonts/Makefile.am	2008-12-25 11:11:41.053000000 -0600
+@@ -24,7 +24,7 @@
+ 			 e_int_config_fonts.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_icon_theme/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_icon_theme/Makefile.am	2008-12-25 11:11:41.068625000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_icon_themes.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_imc/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_imc/Makefile.am	2008-12-25 11:11:41.084250000 -0600
+@@ -26,7 +26,7 @@
+ 			 e_int_config_imc.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_interaction/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_interaction/Makefile.am	2008-12-25 11:11:41.099875000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_interaction.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_intl/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_intl/Makefile.am	2008-12-25 11:11:41.115500000 -0600
+@@ -24,7 +24,7 @@
+ 			 e_int_config_intl.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_keybindings/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_keybindings/Makefile.am	2008-12-25 11:11:41.131125000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_keybindings.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_menus/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_menus/Makefile.am	2008-12-25 11:11:41.146750000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_menus.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_mime/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_mime/Makefile.am	2008-12-25 11:11:41.146750000 -0600
+@@ -26,7 +26,7 @@
+                          e_int_config_mime_edit.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_mouse/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_mouse/Makefile.am	2008-12-25 11:11:41.162375000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_mouse.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_mouse_cursor/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_mouse_cursor/Makefile.am	2008-12-25 11:11:41.178000000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_cursor.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_mousebindings/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_mousebindings/Makefile.am	2008-12-25 11:11:41.193625000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_mousebindings.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_paths/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_paths/Makefile.am	2008-12-25 11:11:41.209250000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_paths.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_performance/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_performance/Makefile.am	2008-12-25 11:11:41.224875000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_performance.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_profiles/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_profiles/Makefile.am	2008-12-25 11:11:41.240500000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_profiles.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_scale/Makefile.am	2008-09-24 05:56:12.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_scale/Makefile.am	2008-12-25 11:11:41.256125000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_scale.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_screensaver/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_screensaver/Makefile.am	2008-12-25 11:11:41.271750000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_screensaver.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_shelves/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_shelves/Makefile.am	2008-12-25 11:11:41.287375000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_shelf.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_startup/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_startup/Makefile.am	2008-12-25 11:11:41.318625000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_startup.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_theme/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_theme/Makefile.am	2008-12-25 11:11:41.334250000 -0600
+@@ -28,7 +28,7 @@
+ 			 e_int_config_theme_web.h			 
+ 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_transitions/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_transitions/Makefile.am	2008-12-25 11:11:41.349875000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_transitions.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_wallpaper/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_wallpaper/Makefile.am	2008-12-25 11:11:41.349875000 -0600
+@@ -30,7 +30,7 @@
+ 			 e_int_config_wallpaper_web.h
+ 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_window_display/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_window_display/Makefile.am	2008-12-25 11:11:41.365500000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_window_display.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_window_focus/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_window_focus/Makefile.am	2008-12-25 11:11:41.381125000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_focus.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_window_manipulation/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_window_manipulation/Makefile.am	2008-12-25 11:11:41.396750000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_window_manipulation.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_window_remembers/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_window_remembers/Makefile.am	2008-12-25 11:11:41.412375000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_remembers.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/conf_winlist/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/conf_winlist/Makefile.am	2008-12-25 11:11:41.428000000 -0600
+@@ -24,7 +24,7 @@
+                          e_int_config_winlist.h                         
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/connman/Makefile.am	2008-09-06 05:46:58.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/connman/Makefile.am	2008-12-25 11:11:41.443625000 -0600
+@@ -28,7 +28,7 @@
+ 		    e_iface.c
+ 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@ @E_DBUS_LIBS@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ endif
+ 
+--- origsrc/enlightenment-0.16.999.050/src/modules/cpufreq/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/cpufreq/Makefile.am	2008-12-25 11:11:41.459250000 -0600
+@@ -21,7 +21,7 @@
+ module_la_SOURCES      = e_mod_main.c \
+                          e_mod_main.h
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ freqsetdir = $(pkgdir)
+--- origsrc/enlightenment-0.16.999.050/src/modules/dropshadow/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/dropshadow/Makefile.am	2008-12-25 11:11:41.474875000 -0600
+@@ -23,7 +23,7 @@
+ 			 e_mod_config.c \
+ 			 e_mod_config.h
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/exebuf/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/exebuf/Makefile.am	2008-12-25 11:11:41.490500000 -0600
+@@ -24,7 +24,7 @@
+                          e_exebuf.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/fileman/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/fileman/Makefile.am	2008-12-25 11:11:41.490500000 -0600
+@@ -26,7 +26,7 @@
+                          e_fwin.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/gadman/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/gadman/Makefile.am	2008-12-25 11:11:41.506125000 -0600
+@@ -24,7 +24,7 @@
+                          e_mod_gadman.c \
+                          e_mod_gadman.h
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/gadman/module.desktop	2008-09-24 21:32:39.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/gadman/module.desktop	2008-12-25 11:16:41.006125000 -0600
+@@ -7,4 +7,4 @@
+ X-Enlightenment-ModuleType=appearance
+ Comment=<title>Gadget Manager</title><br>Module to manage gadgets on the desktop.
+ Comment[it]=<title>Gestore gadget</title><br>Modulo per la gestione dei gadget sul desktop.
+-Comment[hu]=<title>Bigyó kezelő :)</title><br>A modul segítségével könnyedén tudsz elhelyezni, mozgatni, átméretezni modulokat/bigyókat a munkaasztalodon.
+\ No newline at end of file
++Comment[hu]=<title>Bigyó kezelő :)</title><br>A modul segítségével könnyedén tudsz elhelyezni, mozgatni, átméretezni modulokat/bigyókat a munkaasztalodon.
+--- origsrc/enlightenment-0.16.999.050/src/modules/ibar/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/ibar/Makefile.am	2008-12-25 11:11:41.521750000 -0600
+@@ -21,7 +21,7 @@
+                          e_mod_main.h \
+ 			 e_mod_config.c
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/ibox/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/ibox/Makefile.am	2008-12-25 11:11:41.537375000 -0600
+@@ -22,7 +22,7 @@
+                          e_mod_main.h \
+ 			 e_mod_config.c
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/mixer/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/mixer/Makefile.am	2008-12-25 11:11:41.553000000 -0600
+@@ -32,7 +32,7 @@
+ endif
+ 
+ module_la_LIBADD       = @SOUND_LDFLAGS@ @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/msgbus_lang/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/msgbus_lang/Makefile.am	2008-12-25 11:11:41.568625000 -0600
+@@ -27,7 +27,7 @@
+                          e_mod_main.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@ @E_DBUS_LIBS@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ endif
+ 
+--- origsrc/enlightenment-0.16.999.050/src/modules/pager/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/pager/Makefile.am	2008-12-25 11:11:41.568625000 -0600
+@@ -22,7 +22,7 @@
+                          e_mod_main.h \
+ 			 e_mod_config.c
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/start/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/start/Makefile.am	2008-12-25 11:11:41.599875000 -0600
+@@ -21,7 +21,7 @@
+ module_la_SOURCES      = e_mod_main.c \
+                          e_mod_main.h
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/temperature/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/temperature/Makefile.am	2008-12-25 11:11:41.615500000 -0600
+@@ -22,7 +22,7 @@
+                          e_mod_main.h \
+ 			 e_mod_config.c
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@ @ECORE_TXT_LIBS@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ tempgetdir = $(pkgdir)
+--- origsrc/enlightenment-0.16.999.050/src/modules/winlist/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/winlist/Makefile.am	2008-12-25 11:11:41.631125000 -0600
+@@ -24,7 +24,7 @@
+                          e_winlist.h
+ 			 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ uninstall:
+--- origsrc/enlightenment-0.16.999.050/src/modules/wizard/Makefile.am	2008-08-17 02:43:23.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/modules/wizard/Makefile.am	2008-12-25 11:27:42.209250000 -0600
+@@ -28,23 +28,30 @@
+                          e_wizard.h
+ 
+ module_la_LIBADD       = @e_libs@ @dlopen_libs@
+-module_la_LDFLAGS      = -module -avoid-version
++module_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ module_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ page_000_la_SOURCES      = page_000.c
+ page_000_la_LIBADD       = @e_libs@ @dlopen_libs@
+-page_000_la_LDFLAGS      = -module -avoid-version
++page_000_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ page_000_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ page_010_la_SOURCES      = page_010.c
+ page_010_la_LIBADD       = @e_libs@ @dlopen_libs@
+-page_010_la_LDFLAGS      = -module -avoid-version
++page_010_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ page_010_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
+ page_020_la_SOURCES      = page_020.c
+ page_020_la_LIBADD       = @e_libs@ @dlopen_libs@
+-page_020_la_LDFLAGS      = -module -avoid-version
++page_020_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ page_020_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
++if CYGWIN
++page_010_la_LIBADD       += module.la
++page_010_la_DEPENDENCIES += module.la
++page_020_la_LIBADD       += module.la
++page_020_la_DEPENDENCIES += module.la
++endif
++
+ uninstall:
+ 	rm -rf $(DESTDIR)$(libdir)/enlightenment/modules/$(MODULE)
+--- origsrc/enlightenment-0.16.999.050/src/preload/Makefile.am	2008-08-17 02:43:24.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/preload/Makefile.am	2008-12-25 11:08:34.834250000 -0600
+@@ -22,5 +22,5 @@
+ e_precache.c \
+ e_precache.h
+ e_precache_la_LIBADD       = @e_libs@ @dlopen_libs@
+-e_precache_la_LDFLAGS      = -module -avoid-version
++e_precache_la_LDFLAGS      = -module -avoid-version @lt_no_undefined@
+ e_precache_la_DEPENDENCIES = $(top_builddir)/config.h

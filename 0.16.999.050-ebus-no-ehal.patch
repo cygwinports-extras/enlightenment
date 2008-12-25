@@ -1,0 +1,12 @@
+--- origsrc/enlightenment-0.16.999.050/src/bin/e_fm_main.c	2008-09-24 20:26:37.000000000 -0500
++++ src/enlightenment-0.16.999.050/src/bin/e_fm_main.c	2008-12-25 03:27:06.271750000 -0600
+@@ -43,6 +43,9 @@
+ #include "e_prefix.h"
+ 
+ /* E_DBUS support */
++#ifdef __CYGWIN__
++#undef HAVE_EDBUS
++#endif
+ #ifdef HAVE_EDBUS
+ #include <E_DBus.h>
+ #include <E_Hal.h>
