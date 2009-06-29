@@ -1,5 +1,5 @@
 category: X11
-requires: cygwin libdbus1_3 libecore0 libedbus0 libedje0 libeet1 libefreet0 libevas0 libintl8 libX11_6
+requires: libdbus1_3 libecore0 libedbus0 libedje0 libeet1 libefreet0 libevas0 libintl8 libX11_6
 sdesc: "Enlightenment window manager"
 ldesc: "Enlightenment 0.17 is the next generation of UNIX graphical
 environments. It is not just a window manager, but it is also a desktop
