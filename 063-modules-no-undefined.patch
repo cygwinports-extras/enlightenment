@@ -1,0 +1,164 @@
+--- origsrc/enlightenment-0.16.999.063/configure.ac	2009-12-02 16:15:47.000000000 -0600
++++ src/enlightenment-0.16.999.063/configure.ac	2010-02-04 00:43:16.586039000 -0600
+@@ -310,10 +310,12 @@ requirements_e="evas ecore ecore-x ecore
+ 
+ AC_E_CHECK_PKG(ECORE_IMF, [ecore-imf ecore-imf-evas], [], [:])
+ 
+-e_libs=$E_LIBS" "$LIBINTL" "$fnmatch_libs" "$ECORE_IMF_LIBS" "$execinfo_libs
++e_bin_libs=$E_LIBS" "$LIBINTL" "$fnmatch_libs" "$ECORE_IMF_LIBS" "$execinfo_libs
++e_libs=$E_LIBS" "$LTLIBINTL" "$fnmatch_libs" "$ECORE_IMF_LIBS" "$execinfo_libs
+ e_cflags="-DUSE_E_CONFIG_H "$E_CFLAGS" "$ECORE_IMF_CFLAGS
+ e_configflags="-DUSE_E_CONFIG_H"
+ 
++AC_SUBST(e_bin_libs)
+ AC_SUBST(e_libs)
+ AC_SUBST(e_cflags)
+ AC_SUBST(e_configflags)
+@@ -411,6 +413,17 @@ fi
+ AC_SUBST(SOUND_CFLAGS)
+ AC_SUBST(SOUND_LIBS)
+ 
++case "$host_os" in
++   cygwin*)
++      with_cygwin=yes
++      e_libs="$e_libs -no-undefined -Wl,\$(top_builddir)/src/bin/libenlightenment.a"
++      E_IMPLIB="-lenlightenment"
++   ;;
++esac
++
++AC_SUBST(E_IMPLIB)
++AM_CONDITIONAL(CYGWIN, test "x$with_cygwin" = "xyes")
++
+ AC_E_OPTIONAL_MODULE([ibar], true)
+ AC_E_OPTIONAL_MODULE([dropshadow], true)
+ AC_E_OPTIONAL_MODULE([clock], true)
+--- origsrc/enlightenment-0.16.999.063/enlightenment.pc.in	2009-04-21 08:32:36.000000000 -0500
++++ src/enlightenment-0.16.999.063/enlightenment.pc.in	2010-02-04 00:14:45.284158200 -0600
+@@ -10,6 +10,6 @@ Name: enlightenment
+ Description: Enlightenmnt Window Manager
+ Requires: @requirements_e@
+ Version: @VERSION@
+-Libs: -L${libdir}
++Libs: -L${libdir} @E_IMPLIB@
+ Libs.private: 
+ Cflags: -I${includedir} @e_configflags@
+--- origsrc/enlightenment-0.16.999.063/src/bin/Makefile.am	2009-10-25 10:45:35.000000000 -0500
++++ src/enlightenment-0.16.999.063/src/bin/Makefile.am	2010-02-04 14:33:33.431399600 -0600
+@@ -313,7 +313,11 @@ e_main.c \
+ $(enlightenment_src)
+ 
+ enlightenment_LDFLAGS = -export-dynamic
+-enlightenment_LDADD = @e_libs@ @x_libs@ @dlopen_libs@ @cf_libs@ @VALGRIND_LIBS@
++enlightenment_LDADD = @e_bin_libs@ @x_libs@ @dlopen_libs@ @cf_libs@ @VALGRIND_LIBS@
++
++if CYGWIN
++enlightenment_LDFLAGS += -Wl,--export-all-symbols,--out-implib,libenlightenment.a
++endif
+ 
+ enlightenment_imc_SOURCES = \
+ e.h \
+@@ -374,6 +378,9 @@ enlightenment_init_LDADD = @E_INIT_LIBS@
+ setuid_root_mode = a=rx,u+xs
+ install-data-hook:
+ 	@chmod $(setuid_root_mode) $(DESTDIR)$(libdir)/enlightenment/utils/enlightenment_sys$(EXEEXT) || true
++if CYGWIN
++	$(INSTALL_DATA) libenlightenment.a $(DESTDIR)$(libdir)/libenlightenment.a
++endif
+ 
+ installed_headersdir = $(prefix)/include/enlightenment
+ installed_headers_DATA = $(ENLIGHTENMENTHEADERS)
+--- origsrc/enlightenment-0.16.999.063/src/bin/e_module.c	2009-09-21 21:40:55.000000000 -0500
++++ src/enlightenment-0.16.999.063/src/bin/e_module.c	2010-02-04 00:18:34.959294800 -0600
+@@ -3,6 +3,12 @@
+  */
+ #include "e.h"
+ 
++#ifdef __CYGWIN__
++#define MODULE_EXT ".dll"
++#else
++#define MODULE_EXT ".so"
++#endif
++
+ /* TODO List:
+  * 
+  * * add module types/classes
+@@ -116,7 +122,7 @@ e_module_new(const char *name)
+    m = E_OBJECT_ALLOC(E_Module, E_MODULE_TYPE, _e_module_free);
+    if (name[0] != '/')
+      {
+-	snprintf(buf, sizeof(buf), "%s/%s/module.so", name, MODULE_ARCH);
++	snprintf(buf, sizeof(buf), "%s/%s/module%s", name, MODULE_ARCH, MODULE_EXT);
+ 	modpath = e_path_find(path_modules, buf);
+      }
+    else
+--- origsrc/enlightenment-0.16.999.063/src/modules/everything/Makefile.am	2009-10-07 18:56:44.000000000 -0500
++++ src/enlightenment-0.16.999.063/src/modules/everything/Makefile.am	2010-02-04 03:50:31.428635300 -0600
+@@ -1,7 +1,7 @@
+ MAINTAINERCLEANFILES = Makefile.in everything.pc
+ MODULE = everything
+ 
+-SUBDIRS = sources actions views
++SUBDIRS = . sources actions views
+ 
+ # data files for the module
+ filesdir = $(libdir)/enlightenment/modules/$(MODULE)
+--- origsrc/enlightenment-0.16.999.063/src/modules/everything/actions/Makefile.am	2009-08-31 06:22:44.000000000 -0500
++++ src/enlightenment-0.16.999.063/src/modules/everything/actions/Makefile.am	2010-02-04 04:52:52.726625300 -0600
+@@ -32,3 +32,9 @@ evry_plug_wallpaper_la_SOURCES =  evry_p
+ evry_plug_wallpaper_la_LIBADD       = @e_libs@
+ evry_plug_wallpaper_la_LDFLAGS      = -no-undefined -module -avoid-version
+ evry_plug_wallpaper_la_LIBTOOLFLAGS = --tag=disable-static
++
++if CYGWIN
++evry_plug_border_act_la_LIBADD += ../module.la
++evry_plug_clipboard_la_LIBADD += ../module.la
++evry_plug_wallpaper_la_LIBADD += ../module.la
++endif
+--- origsrc/enlightenment-0.16.999.063/src/modules/everything/sources/Makefile.am	2009-08-31 06:22:44.000000000 -0500
++++ src/enlightenment-0.16.999.063/src/modules/everything/sources/Makefile.am	2010-02-04 03:50:20.845029900 -0600
+@@ -62,4 +62,14 @@ evry_plug_aspell_la_LIBADD       = @e_li
+ evry_plug_aspell_la_LDFLAGS      = -no-undefined -module -avoid-version
+ evry_plug_aspell_la_LIBTOOLFLAGS = --tag=disable-static
+ 
++if CYGWIN
++evry_plug_apps_la_LIBADD += ../module.la
++evry_plug_border_la_LIBADD += ../module.la
++evry_plug_dir_browse_la_LIBADD += ../module.la
++evry_plug_tracker_la_LIBADD += ../module.la
++evry_plug_calc_la_LIBADD += ../module.la
++evry_plug_config_la_LIBADD += ../module.la
++evry_plug_aspell_la_LIBADD += ../module.la
++endif
++
+ 
+--- origsrc/enlightenment-0.16.999.063/src/modules/everything/views/Makefile.am	2009-08-31 06:22:44.000000000 -0500
++++ src/enlightenment-0.16.999.063/src/modules/everything/views/Makefile.am	2010-02-04 04:53:38.935268300 -0600
+@@ -34,4 +34,10 @@ evry_plug_view_thumb_la_LIBADD       = @
+ evry_plug_view_thumb_la_LDFLAGS      = -no-undefined -module -avoid-version
+ evry_plug_view_thumb_la_LIBTOOLFLAGS = --tag=disable-static
+ 
++if CYGWIN
++evry_plug_preview_la_LIBADD += ../module.la
++evry_plug_view_help_la_LIBADD += ../module.la
++evry_plug_view_thumb_la_LIBADD += ../module.la
++endif
++
+ 
+--- origsrc/enlightenment-0.16.999.063/src/modules/wizard/Makefile.am	2009-11-20 17:52:28.000000000 -0600
++++ src/enlightenment-0.16.999.063/src/modules/wizard/Makefile.am	2010-02-04 01:52:53.905968100 -0600
+@@ -97,5 +97,15 @@ page_200_la_LIBADD       = @e_libs@ @dlo
+ page_200_la_LDFLAGS      = -module -avoid-version
+ page_200_la_DEPENDENCIES = $(top_builddir)/config.h
+ 
++if CYGWIN
++page_000_la_LIBADD += module.la
++page_010_la_LIBADD += module.la
++page_020_la_LIBADD += module.la
++page_030_la_LIBADD += module.la
++page_070_la_LIBADD += module.la
++page_080_la_LIBADD += module.la
++page_200_la_LIBADD += module.la
++endif
++
+ uninstall:
+ 	rm -rf $(DESTDIR)$(libdir)/enlightenment/modules/$(MODULE)
