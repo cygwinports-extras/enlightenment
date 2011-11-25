@@ -1,0 +1,40 @@
+DESCRIPTION="Enlightenment window manager"
+HOMEPAGE="http://www.enlightenment.org/"
+SRC_URI="http://download.enlightenment.org/snapshots/2010-12-03/${P}.tar.bz2"
+
+PKG_NAMES="${PN} ${PN}-devel"
+PKG_HINTS="setup devel"
+enlightenment_CONTENTS="etc/ usr/bin/ usr/lib/${PN}/ usr/share/"
+enlightenment_devel_CONTENTS="usr/include/ usr/lib/lib* usr/lib/pkgconfig/"
+
+DISTCLEANFILES="enlightenment.pc src/modules/everything/everything.pc"
+
+src_compile() {
+	plugin_ldflags="-no-undefined -shrext .so -Wl,${B}/src/bin/libenlightenment.a"
+
+	cd ${S}
+	cygautoreconf
+	cd ${B}
+	cygconf	--disable-static --disable-alsa	--with-profile=FAST_PC
+	cygmake -C src/bin enlightenment_LDFLAGS="-Wl,--export-all-symbols,--out-implib,libenlightenment.a"
+	cygmake -C src/preload LDFLAGS="$plugin_ldflags"
+
+	# policy .la depend on illume2/module.la
+	cygmake -C src/modules/illume2/ SUBDIRS= LDFLAGS="$plugin_ldflags"
+	cygmake -C src/modules/illume2/policies/ LDFLAGS="$plugin_ldflags ${B}/src/modules/illume2/module.la"
+
+	# wizard/page_*.la depend on wizard/module.la
+	cygmake -C src/modules/wizard module.la LDFLAGS="$plugin_ldflags"
+	cygmake -C src/modules/wizard LDFLAGS="$plugin_ldflags module.la"
+
+	# a few helper executables exist in src/modules, so don't use LDFLAGS
+	cygmake module_la_LDFLAGS="-module -avoid-version $plugin_ldflags"
+}
+
+src_install() {
+	cd ${B}
+	cyginstall
+
+	dolib src/bin/libenlightenment.a
+	sed -i -e '/^Libs:/s/$/ -lenlightenment/' ${D}/usr/lib/pkgconfig/enlightenment.pc
+}
