@@ -1,0 +1,12 @@
+--- origsrc/enlightenment-0.16.999.65643/src/modules/mixer/pa.c	2011-11-06 04:50:52.000000000 -0600
++++ src/enlightenment-0.16.999.65643/src/modules/mixer/pa.c	2011-12-08 04:44:55.272643600 -0600
+@@ -350,7 +350,9 @@ con(Pulse *conn, int type __UNUSED__, Ec
+    INF("connected to %s", ecore_con_server_name_get(ev->server));
+ 
+    conn->fd = dup(ecore_con_server_fd_get(ev->server));
++#ifdef SO_PASSCRED
+    setsockopt(conn->fd, SOL_SOCKET, SO_PASSCRED, &on, sizeof(on));
++#endif
+    setsockopt(conn->fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+    fcntl(conn->fd, F_SETFL, O_NONBLOCK | FD_CLOEXEC);
+    conn->fdh = ecore_main_fd_handler_add(conn->fd, ECORE_FD_WRITE, (Ecore_Fd_Cb)fdh_func, conn, NULL, NULL);

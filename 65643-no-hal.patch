@@ -1,0 +1,22 @@
+--- origsrc/enlightenment-0.16.999.65643/configure.ac	2011-11-21 17:51:42.000000000 -0600
++++ src/enlightenment-0.16.999.65643/configure.ac	2011-12-08 03:58:30.451408600 -0600
+@@ -329,11 +329,18 @@ else
+   device_backend=ehal
+ fi
+ 
++if test "$device_backend" = "ehal"; then
++  PKG_CHECK_MODULES([EHAL], [ehal >= 1.0.0],
++    [
++      AC_DEFINE_UNQUOTED([HAVE_HAL],[1],[enable HAL support])
++    ],
++    [device_backend=])
++fi
++
+ AC_MSG_CHECKING([which device backend to use])
+ AC_MSG_RESULT($device_backend)
+ 
+ AM_CONDITIONAL([HAVE_EEZE], [test "x${device_backend}" = "xeeze"])
+-test "x${device_backend}" = "xeeze" || AC_DEFINE_UNQUOTED([HAVE_HAL],[1],[enable HAL support])
+ 
+ 
+ DBUS_MOUNT_CONFIG=1

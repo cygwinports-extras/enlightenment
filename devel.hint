@@ -1,5 +1,5 @@
 category: X11
-requires: enlightenment libdbus1-devel libecore-devel libedbus-devel libedje-devel libeet-devel libefreet-devel libeina-devel libevas-devel gettext libX11-devel
+requires: enlightenment libdbus1-devel libecore-devel libedbus-devel libedje-devel libeet-devel libefreet-devel libeina-devel libevas-devel gettext libxcb-devel
 external-source: enlightenment
 sdesc: "Enlightenment window manager (plugin development)"
 ldesc: "Enlightenment 0.17 is the next generation of UNIX graphical
