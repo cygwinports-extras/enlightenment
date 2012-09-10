@@ -1,7 +1,0 @@
-category: X11
-requires: libdbus1_3 libecore1 libedbus1 libedje1 libeet1 libefreet1 libeina1 libevas1 libintl8 libxcb1 libxcb-shape0
-sdesc: "Enlightenment window manager"
-ldesc: "Enlightenment 0.17 is the next generation of UNIX graphical
-environments. It is not just a window manager, but it is also a desktop
-shell. A desktop shell means, a window manager plus a file manager, plus
-configuration utilitys all in one."

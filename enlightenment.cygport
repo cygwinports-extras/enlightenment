@@ -1,25 +1,31 @@
-DESCRIPTION="Enlightenment window manager"
+NAME="enlightenment"
+VERSION=0.16.999.76015
+RELEASE=1
+CATEGORY="X11"
+SUMMARY="Enlightenment window manager"
+DESCRIPTION="Enlightenment 0.17 is the next generation of UNIX graphical
+environments. It is not just a window manager, but it is also a desktop
+shell. A desktop shell means, a window manager plus a file manager, plus
+configuration utilitys all in one."
 HOMEPAGE="http://www.enlightenment.org/"
-SRC_URI="http://download.enlightenment.org/snapshots/2011-11-28/${P}.tar.bz2"
-
-PATCH_URI="65643-no-hal.patch
-	   65643-no-SO_PASSCRED.patch"
+SRC_URI="http://download.enlightenment.org/snapshots/2012-09-03/${P}.tar.bz2"
+PATCH_URI="65643-no-hal.patch"
 
 PKG_NAMES="${PN} ${PN}-devel"
 PKG_HINTS="setup devel"
 enlightenment_CONTENTS="etc/ usr/bin/ usr/lib/${PN}/ usr/share/"
 enlightenment_devel_CONTENTS="usr/include/ usr/lib/lib* usr/lib/pkgconfig/"
 
-DISTCLEANFILES="enlightenment.pc src/modules/everything/everything.pc"
+DISTCLEANFILES="enlightenment.pc data/etc/sysactions.conf src/modules/everything/everything.pc"
 
 src_compile() {
-	plugin_ldflags="-no-undefined -shrext .so -Wl,${B}/src/bin/libenlightenment.a"
+	plugin_ldflags="-no-undefined -shrext .so -Wl,${B}/src/bin/libenlightenment.dll.a"
 
 	cd ${S}
 	cygautoreconf
 	cd ${B}
 	cygconf	--disable-static --disable-alsa --disable-battery --disable-temperature --disable-illume2 --with-profile=FAST_PC
-	cygmake -C src/bin enlightenment_LDFLAGS="-Wl,--export-all-symbols,--out-implib,libenlightenment.a"
+	cygmake -C src/bin enlightenment_LDFLAGS="-Wl,--export-all-symbols,--out-implib,libenlightenment.dll.a"
 	cygmake -C src/preload LDFLAGS="$plugin_ldflags"
 
 	# policy .la depend on illume2/module.la
@@ -38,6 +44,6 @@ src_install() {
 	cd ${B}
 	cyginstall
 
-	dolib src/bin/libenlightenment.a
+	dolib src/bin/libenlightenment.dll.a
 	sed -i -e '/^Libs:/s/$/ -lenlightenment/' ${D}/usr/lib/pkgconfig/enlightenment.pc
 }
